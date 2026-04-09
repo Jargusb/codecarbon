@@ -1475,6 +1475,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#added-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1551,9 +1562,68 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;get_cpu_temperature: Could not read CPU temperature: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
             <span class="k">return</span> <span class="mf">0.0</span>
 </code></pre></div>
+<h3 id="added-workflow">Added Workflow<a class="headerlink" href="#added-workflow" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">name</span><span class="p">:</span> <span class="n">Test</span> <span class="n">Temperature</span> <span class="n">Tracking</span>
+
+<span class="n">on</span><span class="p">:</span>
+  <span class="n">push</span><span class="p">:</span>
+    <span class="n">branches</span><span class="p">:</span> <span class="p">[</span> <span class="n">main</span> <span class="p">]</span>
+  <span class="n">workflow_dispatch</span><span class="p">:</span>
+
+<span class="n">jobs</span><span class="p">:</span>
+  <span class="n">test</span><span class="o">-</span><span class="n">temperature</span><span class="p">:</span>
+    <span class="n">runs</span><span class="o">-</span><span class="n">on</span><span class="p">:</span> <span class="n">ubuntu</span><span class="o">-</span><span class="n">latest</span>
+
+    <span class="n">steps</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">uses</span><span class="p">:</span> <span class="n">actions</span><span class="o">/</span><span class="n">checkout</span><span class="nd">@v3</span>
+
+      <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">Set</span> <span class="n">up</span> <span class="n">Python</span>
+        <span class="n">uses</span><span class="p">:</span> <span class="n">actions</span><span class="o">/</span><span class="n">setup</span><span class="o">-</span><span class="n">python</span><span class="nd">@v4</span>
+        <span class="k">with</span><span class="p">:</span>
+          <span class="n">python</span><span class="o">-</span><span class="n">version</span><span class="p">:</span> <span class="s1">&#39;3.11&#39;</span>
+
+      <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">Install</span> <span class="n">dependencies</span>
+        <span class="n">run</span><span class="p">:</span> <span class="o">|</span>
+          <span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="o">.</span>
+          <span class="n">pip</span> <span class="n">install</span> <span class="n">pandas</span>
+
+      <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">Check</span> <span class="n">sensors</span> <span class="n">available</span>
+        <span class="n">run</span><span class="p">:</span> <span class="o">|</span>
+          <span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="o">-</span><span class="n">y</span> <span class="n">lm</span><span class="o">-</span><span class="n">sensors</span>
+          <span class="n">python3</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;import psutil; print(&#39;Sensors:&#39;, psutil.sensors_temperatures())&quot;</span>
+
+      <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">Run</span> <span class="n">temperature</span> <span class="n">test</span>
+        <span class="n">run</span><span class="p">:</span> <span class="o">|</span>
+          <span class="n">python3</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;</span>
+          <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+          <span class="kn">from</span><span class="w"> </span><span class="nn">codecarbon</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmissionsTracker</span>
+
+          <span class="n">tracker</span> <span class="o">=</span> <span class="n">EmissionsTracker</span><span class="p">(</span>
+              <span class="n">project_name</span><span class="o">=</span><span class="s1">&#39;temperature_test&#39;</span><span class="p">,</span>
+              <span class="n">measure_power_secs</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+              <span class="n">save_to_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <span class="n">output_file</span><span class="o">=</span><span class="s1">&#39;emissions_temp_test.csv&#39;</span><span class="p">,</span>
+              <span class="n">log_level</span><span class="o">=</span><span class="s1">&#39;debug&#39;</span>
+          <span class="p">)</span>
+
+          <span class="n">tracker</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+          <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10_000_000</span><span class="p">))</span>
+          <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+          <span class="n">emissions</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+          <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Emissions: </span><span class="si">{</span><span class="n">emissions</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> kg CO2&#39;</span><span class="p">)</span>
+          <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;CPU temperature: </span><span class="si">{</span><span class="n">tracker</span><span class="o">.</span><span class="n">final_emissions_data</span><span class="o">.</span><span class="n">cpu_temperature</span><span class="si">:</span><span class="s1">.1f</span><span class="si">}</span><span class="s1">C&#39;</span><span class="p">)</span>
+          <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;GPU temperature: </span><span class="si">{</span><span class="n">tracker</span><span class="o">.</span><span class="n">final_emissions_data</span><span class="o">.</span><span class="n">gpu_temperature</span><span class="si">:</span><span class="s1">.1f</span><span class="si">}</span><span class="s1">C&#39;</span><span class="p">)</span>
+
+          <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+          <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s1">&#39;emissions_temp_test.csv&#39;</span><span class="p">)</span>
+          <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;CSV columns:&#39;</span><span class="p">,</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+          <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Temperature values:&#39;</span><span class="p">)</span>
+          <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">[[</span><span class="s1">&#39;cpu_temperature&#39;</span><span class="p">,</span> <span class="s1">&#39;gpu_temperature&#39;</span><span class="p">]])</span>
+          <span class="s2">&quot;</span>
+</code></pre></div>
 <p>Allowed for CodeCarbon to track it and input it in to the CSV data set, shown in terminal below
 <img alt="" class="align-center" height="400px" src="../../images/CpuTemp.png" width="700px" /></p>
-<p>Make sure to run the 'test_temp.py' file</p>
 
 
 
