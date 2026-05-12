@@ -44,6 +44,14 @@ def is_powergadget_available() -> bool:
         return False
 
 
+def is_macmon_available() -> bool:
+    return_code = subprocess.run(["macmon", "-V"], capture_output=True).returncode
+    if return_code == 0:
+        return True
+    else:
+        return False
+
+
 def _get_candidate_bases(rapl_dir: str) -> list:
     """Get list of directories to scan for RAPL files."""
     default_rapl_dir = "/sys/class/powercap/intel-rapl/subsystem"
@@ -239,6 +247,51 @@ def is_psutil_available():
         return False
 
 
+class Macmon:
+    """
+    A class to interface with Macmon for monitoring CPU and GPU statistics.
+
+    This class acts to translate the output of Macmon into something that CodeCarbon can use.
+
+    """
+    _osx_exec = "macmon"
+
+    def __init__(
+        self,
+        json_file_name: str = "macmon_output.json",
+        output_dir: str = ".",
+        ):
+            self.output_file = None
+            self.macmon = None
+            self._json_file_path = os.path.join(output_dir, json_file_name)
+            self.setup_macon()
+
+    def setup_macon(self):
+        self.output_file = open(self._json_file_path, "w")
+        self.output_file.write("")
+        self.output_file.close()
+        self.start()
+
+
+    def get_output(self):
+        output = self.macmon.stdout.read()
+        self.output_file.write(output)
+
+
+    def start(self):
+        self.output_file = open(self._json_file_path, "a")
+        self.macmon = subprocess.Popen(["macmon", "pipe"], text=True, cwd=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+    def stop(self):
+        self.macmon.terminate()
+        self.output_file.close()
+
+    #def start(self) -> None:
+        # TODO: Read energy
+     #   pass
+
+
 class IntelPowerGadget:
     """
     A class to interface with Intel Power Gadget for monitoring CPU power consumption on Windows and (non-Apple Silicon) macOS.
@@ -345,7 +398,8 @@ class IntelPowerGadget:
             )
         elif self._system.startswith("darwin"):
             returncode = subprocess.call(
-                f"'{self._cli}' -duration {self._duration} -resolution {self._resolution} -file {self._log_file_path} > /dev/null",  # noqa: E501
+                f"'{self._cli}' -duration {self._duration} -resolution {self._resolution} -file {self._log_file_path} > /dev/null",
+                # noqa: E501
                 shell=True,
             )
         else:
@@ -751,12 +805,12 @@ class IntelRAPL:
         """Create RAPLFile objects from deduplicated domains."""
         domain_index = 0
         for (
-            name,
-            _,
-            is_mmio,
-            rapl_file,
-            rapl_file_max,
-            domain_name,
+                name,
+                _,
+                is_mmio,
+                rapl_file,
+                rapl_file_max,
+                domain_name,
         ) in domain_map.values():
             try:
                 if domain_name and (
