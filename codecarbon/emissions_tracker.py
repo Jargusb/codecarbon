@@ -424,16 +424,20 @@ class BaseEmissionsTracker(ABC):
         else:
             logger.info(f"  GPU model: {hardware_info['gpu_model']}")
 
-        # Run `self._measure_power_and_energy` every `measure_power_secs` seconds in a
-        # background thread
-        self._scheduler = PeriodicScheduler(
-            function=self._measure_power_and_energy,
-            interval=self._measure_power_secs,
-        )
-        self._scheduler_monitor_power = PeriodicScheduler(
-            function=self._monitor_power,
-            interval=1,
-        )
+        # can check for CPU energy
+        if CPU.is_rapl_available():
+            # Run `self._measure_power_and_energy` every `measure_power_secs` seconds in a
+            # background thread
+            self._scheduler = PeriodicScheduler(
+                function=self._measure_power_and_energy,
+                interval=self._measure_power_secs,
+            )
+        # don't call _scheduler_moniter_power for devices that can check energy
+        else:
+            self._scheduler_monitor_power = PeriodicScheduler(
+                function=self._monitor_power,
+                interval=1,
+            )
 
         self._data_source = DataSource()
 
@@ -562,8 +566,12 @@ class BaseEmissionsTracker(ABC):
         for hardware in self._hardware:
             hardware.start()
 
-        self._scheduler.start()
-        self._scheduler_monitor_power.start()
+        # CPU energy can be read
+        if CPU.is_rapl_available():
+            self._scheduler.start()
+        # don't run unless CPU can't be read
+        else:
+            self._scheduler_monitor_power.start()
 
     def start_task(self, task_name=None) -> None:
         """
