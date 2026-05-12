@@ -1,6 +1,8 @@
 """
 Encapsulates external dependencies to retrieve hardware metadata
 """
+import json
+from time import sleep
 
 import math
 import re
@@ -11,7 +13,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import psutil
 
-from codecarbon.core.cpu import IntelPowerGadget, IntelRAPL
+from codecarbon.core import cpu
+from codecarbon.core.cpu import IntelPowerGadget, IntelRAPL, Macmon
 from codecarbon.core.gpu import AllGPUDevices
 from codecarbon.core.neuron import AllNeuronDevices
 from codecarbon.core.powermetrics import ApplePowermetrics
@@ -497,8 +500,12 @@ class AppleSiliconChip(BaseHardware):
     ):
         self._output_dir = output_dir
         self._model = model
-        self._interface = ApplePowermetrics(self._output_dir)
         self.chip_part = chip_part
+        if cpu.is_macmon_available():
+            self._interface = Macmon
+            self.macmon = cpu.Macmon()
+        else:
+            self._interface = ApplePowermetrics(self._output_dir)
 
     def __repr__(self) -> str:
         return f"AppleSiliconChip ({self._model} > {self.chip_part})"
@@ -510,18 +517,29 @@ class AppleSiliconChip(BaseHardware):
             chip_part (str): Chip part to get power from (CPU, GPU)
         :return: power in kW
         """
+        if self._interface == Macmon:
+            self.macmon.get_output()
+            sleep(2)
+            self.macmon.stop()
+            power = 0
+            for entry in self.macmon.output_file:
+                out_dict = json.loads(entry)
+                power += out_dict["cpu_power"]
+            self.macmon.start()
+            return Power.from_watts(power)
 
-        all_details: Dict = self._interface.get_details()
+        else:
+            all_details: Dict = self._interface.get_details()
 
-        power = 0
-        for metric, value in all_details.items():
-            if re.match(rf"^{self.chip_part} Power", metric):
-                power += value
-                logger.debug(f"_get_power_from_cpus - MATCH {metric} : {value}")
+            power = 0
+            for metric, value in all_details.items():
+                if re.match(rf"^{self.chip_part} Power", metric):
+                    power += value
+                    logger.debug(f"_get_power_from_cpus - MATCH {metric} : {value}")
 
-            else:
-                logger.debug(f"_get_power_from_cpus - DONT MATCH {metric} : {value}")
-        return Power.from_watts(power)
+                else:
+                    logger.debug(f"_get_power_from_cpus - DONT MATCH {metric} : {value}")
+            return Power.from_watts(power)
 
     def _get_energy(self, delay: Time) -> Energy:
         """
@@ -542,7 +560,10 @@ class AppleSiliconChip(BaseHardware):
         return self._get_power()
 
     def start(self):
-        self._interface.start()
+        if self._interface == Macmon:
+            self.macmon.setup_macon()
+        else:
+            self._interface.start()
 
     def get_model(self):
         return self._model

@@ -17,11 +17,13 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import psutil
 
 from codecarbon._version import __version__
+from codecarbon.core import cpu
 from codecarbon.core.config import get_hierarchical_config, normalize_gpu_ids
 from codecarbon.core.emissions import Emissions
 from codecarbon.core.resource_tracker import ResourceTracker
 from codecarbon.core.units import Energy, Power, Time, Water
 from codecarbon.core.util import count_cpus, count_physical_cpus, suppress
+from codecarbon.external import hardware
 from codecarbon.external.geography import CloudMetadata, GeoMetadata
 from codecarbon.external.hardware import CPU, GPU, AppleSiliconChip, NeuronChip
 from codecarbon.external.logger import logger, set_logger_format, set_logger_level
@@ -424,16 +426,20 @@ class BaseEmissionsTracker(ABC):
         else:
             logger.info(f"  GPU model: {hardware_info['gpu_model']}")
 
-        # Run `self._measure_power_and_energy` every `measure_power_secs` seconds in a
-        # background thread
-        self._scheduler = PeriodicScheduler(
-            function=self._measure_power_and_energy,
-            interval=self._measure_power_secs,
-        )
-        self._scheduler_monitor_power = PeriodicScheduler(
-            function=self._monitor_power,
-            interval=1,
-        )
+        # can check for CPU energy
+        if CPU.is_rapl_available():
+            # Run `self._measure_power_and_energy` every `measure_power_secs` seconds in a
+            # background thread
+            self._scheduler = PeriodicScheduler(
+                function=self._measure_power_and_energy,
+                interval=self._measure_power_secs,
+            )
+        # don't call _scheduler_moniter_power for devices that can check energy
+        else:
+            self._scheduler_monitor_power = PeriodicScheduler(
+                function=self._monitor_power,
+                interval=1,
+            )
 
         self._data_source = DataSource()
 
@@ -562,8 +568,12 @@ class BaseEmissionsTracker(ABC):
         for hardware in self._hardware:
             hardware.start()
 
-        self._scheduler.start()
-        self._scheduler_monitor_power.start()
+        # CPU energy can be read
+        if CPU.is_rapl_available():
+            self._scheduler.start()
+        # don't run unless CPU can't be read
+        else:
+            self._scheduler_monitor_power.start()
 
     def start_task(self, task_name=None) -> None:
         """
